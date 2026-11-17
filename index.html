@@ -5,17 +5,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#1f3a5f">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="icon" href="icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icon-192.png">
-<title>FAPO 007 – cashflow slev</title>
+<title>Slevové kampaně a cash flow – SUMMIT-SPORT</title>
 <style>
 :root{--b:#1f3a5f;--b2:#2d5a8e;--g:#2e7d32;--r:#c62828;--bg:#f4f6f9;--c:#fff;--t:#1d2733;--m:#6b7785;--l:#dfe5ec}
 *{box-sizing:border-box}
 body{margin:0;font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--t)}
-header{background:var(--b);color:#fff;padding:10px 14px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
-header h1{font-size:17px;margin:0;flex:1}
+header{background:var(--b);color:#fff;padding:8px 14px;height:62px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+header h1{font-size:18px;margin:0;flex:1}
+header .logo{background:#fff;color:var(--b);border-radius:6px;padding:3px 8px;font-weight:800;font-size:13px;letter-spacing:.5px;display:flex;align-items:center;min-height:30px}
+header .logo img{height:44px;display:block}
 header .chip{font-size:12px;background:rgba(255,255,255,.18);border-radius:10px;padding:2px 8px}
-nav{display:flex;background:#fff;border-bottom:1px solid var(--l);position:sticky;top:44px;z-index:4}
+nav{display:flex;background:#fff;border-bottom:1px solid var(--l);position:sticky;top:62px;z-index:4}
 nav button{flex:1;padding:11px 4px;border:0;background:none;font:inherit;color:var(--m);border-bottom:3px solid transparent;cursor:pointer}
 nav button.on{color:var(--b);border-color:var(--b2);font-weight:600}
 main{max-width:1100px;margin:0 auto;padding:12px}
@@ -63,7 +65,7 @@ svg text{font:11px system-ui,sans-serif;fill:#44505e}
 </style>
 </head>
 <body>
-<header><h1>FAPO 007 – cashflow slev</h1><span class="chip" id="netchip"></span></header>
+<header><span class="logo"><img id="logo" src="logo.png" alt="SUMMIT-SPORT" onerror="if(!this.dataset.t){this.dataset.t=1;this.src='logo.svg'}else{this.parentNode.textContent='SUMMIT-SPORT'}"></span><h1>Slevové kampaně a cash flow</h1><span class="chip" id="netchip"></span></header>
 <nav id="nav">
   <button data-t="data" class="on">1 Data</button><button data-t="kamp">2 Kampaně</button><button data-t="vys">3 Výsledek</button><button data-t="nast">4 Nastavení</button>
 </nav>
@@ -178,7 +180,7 @@ svg text{font:11px system-ui,sans-serif;fill:#44505e}
   <div class="ft"><button class="btn sec" id="ms-none">Žádné</button><button class="btn sec" id="ms-all">Všechny zobrazené</button><button class="btn" id="ms-ok">Hotovo</button></div>
 </dialog>
 
-<script src="vendor/xlsx.full.min.js"></script>
+<script src="xlsx.full.min.js"></script>
 <script src="model.js"></script>
 <script>
 (function(){
@@ -210,7 +212,7 @@ function tab(t){$$('nav button').forEach(function(b){b.classList.toggle('on',b.d
 $('#nav').addEventListener('click',function(e){var b=e.target.closest('button');if(b)tab(b.dataset.t)});
 
 /* ---------- načtení souborů ---------- */
-function readSheet(file,opts){return new Promise(function(res,rej){var fr=new FileReader();fr.onload=function(){try{var wb=XLSX.read(fr.result,{type:'array',cellDates:true});var ws=wb.Sheets[wb.SheetNames[0]];res(XLSX.utils.sheet_to_json(ws,{defval:''}))}catch(e){rej(e)}};fr.onerror=function(){rej(fr.error)};fr.readAsArrayBuffer(file)})}
+function readSheet(file,opts){return new Promise(function(res,rej){if(typeof XLSX==='undefined'){rej(new Error('chybí knihovna xlsx.full.min.js'));return}var fr=new FileReader();fr.onload=function(){try{var wb=XLSX.read(fr.result,{type:'array',cellDates:true});var ws=wb.Sheets[wb.SheetNames[0]];res(XLSX.utils.sheet_to_json(ws,{defval:''}))}catch(e){rej(e)}};fr.onerror=function(){rej(fr.error)};fr.readAsArrayBuffer(file)})}
 ['#f-cenik','#f-sklad'].forEach(function(s){$(s).addEventListener('change',function(){$('#btn-load').disabled=!($('#f-cenik').files[0]&&$('#f-sklad').files[0])})});
 $('#btn-load').addEventListener('click',function(){
   var msg=$('#load-msg'),btn=$('#btn-load');btn.disabled=true;
@@ -480,6 +482,7 @@ $('#btn-ev-add').addEventListener('click',function(){state.S.events.push({od:sta
 $('#btn-reset').addEventListener('click',function(){if(confirm('Obnovit výchozí nastavení modelu?')){var e=state.S.end;state.S=M.defaults();state.S.end=e;saveLS();fillSettings()}});
 
 /* ---------- start ---------- */
+if(typeof XLSX==='undefined'){$('#load-msg').innerHTML='<b style="color:#c62828">Chybí soubor xlsx.full.min.js – nahrajte ho do repozitáře vedle index.html a obnovte stránku (Ctrl+F5).</b>'}
 loadLS();fillSettings();
 idbGet('data').then(function(d){if(d&&d.items){state.items=d.items;state.meta=d.meta;state.calib=d.calib;if(!state.start)state.start=today();afterData()}else renderCamps()}).catch(function(){renderCamps()});
 function net(){$('#netchip').textContent=navigator.onLine?'online':'offline'}window.addEventListener('online',net);window.addEventListener('offline',net);net();
