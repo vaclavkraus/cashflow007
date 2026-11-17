@@ -52,6 +52,7 @@
           outletZdroj: c.d1 > 0 ? 'D1' : (skPc > 0 ? 'sklad' : 'MOC')
         };
         it.komise = /komise/i.test(it.dod);
+        it.typ = it.komise ? 'Komise' : 'Vlastní';
       }
       it.ks += st;
       var v = str(r['Velikost']); if (v) it.vel.push(v);
@@ -110,7 +111,8 @@
       seasWinter: [0.9, 1.25, 1.4],   // listopad, prosinec, leden
       seasSummer: [0.7, 0.7, 0.7],
       fixedMonthly: 0,                // měsíční fixní náklady pop-upu (nájem, lidé) bez DPH
-      salvagePct: 0                   // % z NC, za které se odprodá zbytek po konci (en bloc)
+      salvagePct: 0,                  // % z NC, za které se odprodá zbytek VLASTNÍHO zboží po konci (en bloc)
+      deductKomise: true              // v cashflow odečíst úhradu dodavatelům za prodanou komisi (NC)
     };
   }
 
@@ -125,7 +127,7 @@
   /* ---------- kampaně ---------- */
   function emptyCampaign() {
     return { id: 'c' + Math.random().toString(36).slice(2, 8), name: '', od: '', do: '', disc: 20,
-      znacky: [], znackyEx: [], temata: [], skupiny: [], podskupiny: [], sezony: [] };
+      znacky: [], znackyEx: [], temata: [], skupiny: [], podskupiny: [], sezony: [], typy: [] };
   }
   function matches(c, it) {
     if (c.znackyEx && c.znackyEx.length && c.znackyEx.indexOf(it.znacka) >= 0) return false;
@@ -134,6 +136,7 @@
     if (c.skupiny.length && c.skupiny.indexOf(it.skup) < 0) return false;
     if (c.podskupiny.length && c.podskupiny.indexOf(it.pods) < 0) return false;
     if (c.sezony.length && c.sezony.indexOf(it.sezona) < 0) return false;
+    if (c.typy && c.typy.length && c.typy.indexOf(it.typ || (it.komise ? 'Komise' : 'Vlastní')) < 0) return false;
     return true;
   }
 
@@ -178,6 +181,8 @@
     byC['_none'] = { ks: 0, rev: 0, cost: 0 };
     var discArr = new Float64Array(n), cidArr = new Array(n);
     var soldPer = new Float64Array(n);
+    var isK = items.map(function (it) { return !!it.komise; });
+    var TY = { own: { rev: 0, cost: 0, ks: 0, left: 0, leftNC: 0 }, kom: { rev: 0, cost: 0, ks: 0, left: 0, leftNC: 0 } };
     var fixedPerDay = S.fixedMonthly * 12 / 365;
 
     for (var d = 0; d < nDays; d++) {
@@ -193,7 +198,7 @@
         tf = evs[q].as != null ? S.dow[evs[q].as] / dowSum * evs[q].m : tf * evs[q].m;
       }
       var mo = new Date(t).getUTCMonth() + 1; var mi = mo === 11 ? 0 : (mo === 12 ? 1 : 2);
-      var rev = 0, cost = 0, ks = 0, remNC = 0, remOut = 0;
+      var rev = 0, cost = 0, ks = 0, remNC = 0, remOut = 0, kRev = 0, kCost = 0;
       for (i = 0; i < n; i++) {
         if (rem[i] <= 1e-9) continue;
         var eff = Math.max(discArr[i], S.baseDisc);
@@ -203,21 +208,25 @@
         var sold = rem[i] * hd; rem[i] -= sold; soldPer[i] += sold;
         var r = sold * price[i] * (1 - eff), c = sold * nc[i] * vat;
         rev += r; cost += c; ks += sold;
+        var ty = isK[i] ? TY.kom : TY.own; ty.rev += r; ty.cost += c; ty.ks += sold;
+        if (isK[i]) { kRev += r; kCost += c; }
         var cc = byC[cidArr[i]]; cc.ks += sold; cc.rev += r; cc.cost += c;
       }
       for (i = 0; i < n; i++) { remNC += rem[i] * nc[i]; remOut += rem[i] * price[i]; }
       cumRev += rev; cumCost += cost;
       var remKs = 0; for (i = 0; i < n; i++) remKs += rem[i];
-      days.push({ t: t, rev: rev, revNoVat: rev / vat, cost: cost, ks: ks, remKs: remKs, remNC: remNC, remOut: remOut, fixed: fixedPerDay, cumRev: cumRev });
+      days.push({ t: t, rev: rev, komNC: kCost / vat, cfIn: rev / vat - (S.deductKomise ? kCost / vat : 0), revNoVat: rev / vat, cost: cost, ks: ks, remKs: remKs, remNC: remNC, remOut: remOut, fixed: fixedPerDay, cumRev: cumRev });
     }
     var leftKs = 0, leftNC = 0, leftOut = 0;
     for (i = 0; i < n; i++) { leftKs += rem[i]; leftNC += rem[i] * nc[i]; leftOut += rem[i] * price[i]; }
+    for (i = 0; i < n; i++) { var tt = isK[i] ? TY.kom : TY.own; tt.left += rem[i]; tt.leftNC += rem[i] * nc[i]; }
     var totRev = cumRev, totCost = cumCost;
-    var salvage = leftNC * (S.salvagePct / 100);   // NC bez DPH
+    var salvage = TY.own.leftNC * (S.salvagePct / 100);   // NC bez DPH, jen vlastní zboží (komise se vrací)
+    var cashIn = days.reduce(function (a, d) { return a + d.cfIn; }, 0);
     return {
       days: days, byCampaign: byC, campaigns: act.map(function (a) { return a.c; }),
       matched: act.map(function (a) { var ks = 0, v = 0; a.idx.forEach(function (k) { ks += items[k].ks; v += items[k].ks * items[k].outlet; }); return { id: a.c.id, models: a.idx.length, ks: ks, val: v }; }),
-      totals: { rev: totRev, revNoVat: totRev / vat, cost: totCost, gross: totRev / vat - totCost / vat, soldKs: items.reduce(function (a, it) { return a + it.ks; }, 0) - leftKs, leftKs: leftKs, leftNC: leftNC, leftOut: leftOut, salvage: salvage, fixed: fixedPerDay * nDays },
+      byTyp: TY, totals: { cash: cashIn - fixedPerDay * nDays + salvage, komPay: TY.kom.cost / vat, rev: totRev, revNoVat: totRev / vat, cost: totCost, gross: totRev / vat - totCost / vat, soldKs: items.reduce(function (a, it) { return a + it.ks; }, 0) - leftKs, leftKs: leftKs, leftNC: leftNC, leftOut: leftOut, salvage: salvage, fixed: fixedPerDay * nDays },
       rem: rem, soldPer: soldPer
     };
   }

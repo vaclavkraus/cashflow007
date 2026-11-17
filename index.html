@@ -73,7 +73,7 @@ svg text{font:11px var(--font);fill:var(--m)}
 <body>
 <header class="top">
   <div>
-    <div class="title-row"><h1>Slevové kampaně a cash flow</h1><img class="brand-logo" id="logo" src="logo.png" alt="SUMMIT SPORT"></div>
+    <div class="title-row"><img class="brand-logo" id="logo" src="logo.png" alt="SUMMIT SPORT"><h1>Slevové kampaně a cash flow</h1></div>
     <p class="sub">Pop-up FAPO · sklad 007 · modelování tržeb podle slevových akcí</p>
   </div>
   <span class="chip" id="netchip"></span>
@@ -129,6 +129,7 @@ svg text{font:11px var(--font);fill:var(--m)}
       <div id="chart"></div>
       <div class="muted" id="chart-legend"></div>
     </div>
+    <div class="card"><h2>Vlastní a komisní zboží</h2><div class="scroll"><table id="tb-typ"></table></div><p class="muted" style="margin:8px 0 0">U komise se zbytek po konci vrací dodavateli (nelikviduje se) a za prodané kusy se platí dodavateli NC.</p></div>
     <div class="card"><h2>Kampaně</h2><div class="scroll"><table id="tb-camp"></table></div></div>
     <div class="two">
       <div class="card"><h2>Po týdnech (základní scénář)</h2><div class="scroll"><table id="tb-week"></table></div></div>
@@ -168,7 +169,8 @@ svg text{font:11px var(--font);fill:var(--m)}
   <div class="card"><h2>Cashflow</h2>
     <div class="row">
       <div><label>Fixní náklady pop-upu (Kč bez DPH / měsíc)</label><input type="number" step="1000" id="n-fix"></div>
-      <div><label>Odprodej zbytku po konci (% z NC)</label><input type="number" step="1" id="n-salv"></div>
+      <div><label>Odprodej zbytku vlastního zboží po konci (% z NC)</label><input type="number" step="1" id="n-salv"></div>
+      <div><label>Komise v cashflow</label><select id="n-kom"><option value="1">odečíst úhradu dodavatelům (NC prodané komise)</option><option value="0">neodečítat</option></select></div>
     </div>
   </div>
   <p><button class="btn sec" id="btn-reset">Obnovit výchozí nastavení</button></p>
@@ -199,8 +201,8 @@ svg text{font:11px var(--font);fill:var(--m)}
 'use strict';
 var M=window.FapoModel, $=function(s){return document.querySelector(s)}, $$=function(s){return Array.prototype.slice.call(document.querySelectorAll(s))};
 var state={items:[],meta:null,calib:null,camps:[],S:M.defaults(),calOn:true,pokl:'007',start:'',useCal:true};
-var FIL=[['znacky','Značka'],['znackyEx','Vyloučit značky'],['temata','Téma (dámské, pánské…)'],['skupiny','Skupina (oblečení, boty…)'],['podskupiny','Podskupina (bundy, kalhoty…)'],['sezony','Sezóna']];
-var FKEY={znacky:'znacka',znackyEx:'znacka',temata:'tema',skupiny:'skup',podskupiny:'pods',sezony:'sezona'};
+var FIL=[['znacky','Značka'],['znackyEx','Vyloučit značky'],['temata','Téma (dámské, pánské…)'],['skupiny','Skupina (oblečení, boty…)'],['podskupiny','Podskupina (bundy, kalhoty…)'],['sezony','Sezóna'],['typy','Typ zboží (vlastní / komise)']];
+var FKEY={znacky:'znacka',znackyEx:'znacka',temata:'tema',skupiny:'skup',podskupiny:'pods',sezony:'sezona',typy:'typ'};
 var COLORS=['#0A5D8F','#c0392b','#2e7d32','#8e44ad','#d68910','#117a8b','#7f8c8d','#ad1457'];
 
 /* ---------- pomocné ---------- */
@@ -282,7 +284,7 @@ function renderCamps(){
 $('#btn-add').addEventListener('click',function(){
   var c=M.emptyCampaign();
   var last=state.camps.slice().sort(function(a,b){return (a.do||'')<(b.do||'')?1:-1})[0];
-  if(last&&last.do){var t=M.parseDate(last.do)+M.DAY;c.od=M.fmtDate(t);c.do=M.fmtDate(Math.min(t+13*M.DAY,M.parseDate(state.S.end)))}else{c.od=state.start||today();c.do=state.S.end}
+  if(last&&last.do&&M.parseDate(last.do)<M.parseDate(state.S.end)){var t=M.parseDate(last.do)+M.DAY;c.od=M.fmtDate(t);c.do=M.fmtDate(Math.min(t+13*M.DAY,M.parseDate(state.S.end)))}else{c.od=state.start||today();c.do=state.S.end}
   c.name='Kampaň '+(state.camps.length+1);c.disc=20;editCamp(c,true)});
 $('#btn-clear').addEventListener('click',function(){if(confirm('Smazat všechny kampaně?')){state.camps=[];saveLS();renderCamps()}});
 $('#btn-demo').addEventListener('click',function(){
@@ -364,16 +366,16 @@ function render(){
   $('#vys-empty').style.display=state.items.length?(ok?'none':''):'';$('#vys-body').style.display=ok?'':'none';
   if(!ok){$('#vys-empty').textContent=state.items.length?'Zadejte aspoň jednu kampaň se slevou.':'Nejdřív načtěte data.';return}
   R={p:run(-1),b:run(0),o:run(1)};
-  var T=R.b.totals,S=state.S,cf=T.revNoVat+T.salvage-T.fixed;
+  var T=R.b.totals,S=state.S,cf=T.cash;
   var tot=T.soldKs+T.leftKs;
-  function cfOf(r){return r.totals.revNoVat+r.totals.salvage-r.totals.fixed}
+  function cfOf(r){return r.totals.cash}
   $('#kpis').innerHTML=
    kpi('Tržba k '+dcz(S.end)+' (s DPH)',kc(T.rev),'pesim. '+kc(R.p.totals.rev)+' · optim. '+kc(R.o.totals.rev),'g')+
    kpi('Tržba bez DPH',kc(T.revNoVat),'')+
-   kpi('Cashflow (bez DPH)',kc(cf),(S.fixedMonthly||S.salvagePct)?'po fixních nákladech a odprodeji zbytku':'= tržba bez DPH; fixní náklady v Nastavení',cf>=0?'g':'r')+
+   kpi('Cashflow (bez DPH)',kc(cf),'tržba bez DPH'+(S.deductKomise&&T.komPay?' − úhrada komise dodavatelům '+kc(T.komPay):'')+(S.fixedMonthly?' − fixní náklady':'')+(S.salvagePct?' + odprodej zbytku':''),cf>=0?'g':'r')+
    kpi('Hrubý zisk proti NC',kc(T.gross),'tržba bez DPH − NC prodaného',T.gross>=0?'g':'r')+
    kpi('Prodáno kusů',fmt(T.soldKs)+' z '+fmt(tot),fmt(T.soldKs/tot*100,0)+' % skladu · pesim. '+fmt(R.p.totals.soldKs)+' · optim. '+fmt(R.o.totals.soldKs))+
-   kpi('Zbytek po konci',fmt(T.leftKs)+' ks','NC '+kc(T.leftNC)+' · outlet '+kc(T.leftOut),T.leftKs>tot*.2?'r':'');
+   kpi('Zbytek po konci',fmt(T.leftKs)+' ks','NC '+kc(T.leftNC)+' · outlet '+kc(T.leftOut)+(R.b.byTyp.kom.left>0.5?' · z toho komise k vrácení: '+fmt(R.b.byTyp.kom.left)+' ks':''),T.leftKs>tot*.2?'r':'');
   drawChart();
   // tabulka kampaní
   var h='<tr><th>Kampaň</th><th>Termín</th><th>Sleva</th><th>Zasaženo ks</th><th>Prodá se ks</th><th>Tržba s DPH</th><th>NC prodaného</th><th>Hrubý zisk</th></tr>';
@@ -384,6 +386,12 @@ function render(){
   h+='<tr><td><i>mimo kampaň (outlet cena)</i></td><td></td><td></td><td></td><td>'+fmt(nn.ks)+'</td><td>'+fmt(nn.rev)+'</td><td>'+fmt(nn.cost/1.21)+'</td><td>'+fmt(nn.rev/1.21-nn.cost/1.21)+'</td></tr>';
   h+='<tr style="font-weight:700;background:#eef2f6"><td>Celkem</td><td></td><td></td><td></td><td>'+fmt(T.soldKs)+'</td><td>'+fmt(T.rev)+'</td><td>'+fmt(T.cost/1.21)+'</td><td>'+fmt(T.gross)+'</td></tr>';
   $('#tb-camp').innerHTML=h;
+  // vlastní vs komise
+  var ty=R.b.byTyp,st={own:0,kom:0};state.items.forEach(function(it){st[it.komise?'kom':'own']+=it.ks});
+  var th='<tr><th>Typ</th><th>Skladem ks</th><th>Prodá se ks</th><th>Tržba s DPH</th><th>Tržba bez DPH</th><th>NC prodaného</th><th>Hrubý zisk</th><th>Zbývá ks</th><th>Zbývá NC</th><th>Zbytek</th></tr>';
+  [['Vlastní','own','likvidace / odprodej'],['Komise','kom','vratka dodavateli']].forEach(function(x){var q=ty[x[1]];
+    th+='<tr><td>'+x[0]+'</td><td>'+fmt(st[x[1]])+'</td><td>'+fmt(q.ks)+'</td><td>'+fmt(q.rev)+'</td><td>'+fmt(q.rev/1.21)+'</td><td>'+fmt(q.cost/1.21)+'</td><td>'+fmt(q.rev/1.21-q.cost/1.21)+'</td><td>'+fmt(q.left)+'</td><td>'+fmt(q.leftNC)+'</td><td>'+x[2]+'</td></tr>'});
+  $('#tb-typ').innerHTML=th;
   // týdny
   var wk={};R.b.days.forEach(function(d,i){var w=Math.floor(i/7);wk[w]=wk[w]||{t:d.t,ks:0,rev:0,rem:0};wk[w].ks+=d.ks;wk[w].rev+=d.rev;wk[w].rem=d.remKs});
   var wh='<tr><th>Týden od</th><th>Prodáno ks</th><th>Tržba s DPH</th><th>Zbývá ks</th></tr>';
@@ -404,7 +412,7 @@ function series(r){
   r.days.forEach(function(d,i){
     c+=d.rev*k;f+=d.fixed;
     var v;
-    if(metric==='cum')v=c;else if(metric==='cf')v=r.days.slice(0,i+1).reduce(function(a,x){return a+x.revNoVat},0)-f+(i===r.days.length-1?r.totals.salvage:0);
+    if(metric==='cum')v=c;else if(metric==='cf')v=r.days.slice(0,i+1).reduce(function(a,x){return a+x.cfIn},0)-f+(i===r.days.length-1?r.totals.salvage:0);
     else if(metric==='day')v=d.rev*k;else v=d.remKs;
     out.push(v)});
   return out;
@@ -414,8 +422,8 @@ function drawChart(){
   var W=820,H=340,m={l:66,r:12,t:16,b:34},pw=W-m.l-m.r,ph=H-m.t-m.b;
   var sb=series(R.b),sp=metric==='day'?null:series(R.p),so=metric==='day'?null:series(R.o);
   var n=sb.length,days=R.b.days;
-  if(metric==='cf'){/* rychlejší přepočet kumulace */var cum=0,fx=0;sb=R.b.days.map(function(d,i){cum+=d.revNoVat;fx+=d.fixed;return cum-fx+(i===n-1?R.b.totals.salvage:0)});
-    [['p','sp'],['o','so']].forEach(function(pair){var r=R[pair[0]],cc=0,ff=0,arr=r.days.map(function(d,i){cc+=d.revNoVat;ff+=d.fixed;return cc-ff+(i===n-1?r.totals.salvage:0)});if(pair[0]==='p')sp=arr;else so=arr})}
+  if(metric==='cf'){/* rychlejší přepočet kumulace */var cum=0,fx=0;sb=R.b.days.map(function(d,i){cum+=d.cfIn;fx+=d.fixed;return cum-fx+(i===n-1?R.b.totals.salvage:0)});
+    [['p','sp'],['o','so']].forEach(function(pair){var r=R[pair[0]],cc=0,ff=0,arr=r.days.map(function(d,i){cc+=d.cfIn;ff+=d.fixed;return cc-ff+(i===n-1?r.totals.salvage:0)});if(pair[0]==='p')sp=arr;else so=arr})}
   var all=sb.concat(sp||[],so||[]),mx=Math.max.apply(null,all),mn=metric==='cf'?Math.min(0,Math.min.apply(null,all)):0;
   if(mx<=mn)mx=mn+1;
   var step=Math.pow(10,Math.floor(Math.log10(mx-mn)));var nice=[1,2,2.5,5,10].map(function(x){return x*step}).filter(function(x){return (mx-mn)/x<=6})[0]||step*10;
@@ -443,7 +451,7 @@ function drawChart(){
 $('#btn-export').addEventListener('click',function(){
   var b=R.b,T=b.totals,wb=XLSX.utils.book_new();
   var sum=[['FAPO 007 – cashflow slev'],['Simulace od',state.start],['Simulace do',state.S.end],[],['','Pesimistický','Základní','Optimistický'],
-   ['Tržba s DPH',R.p.totals.rev,T.rev,R.o.totals.rev],['Tržba bez DPH',R.p.totals.revNoVat,T.revNoVat,R.o.totals.revNoVat],['Prodáno ks',R.p.totals.soldKs,T.soldKs,R.o.totals.soldKs],['Zbývá ks',R.p.totals.leftKs,T.leftKs,R.o.totals.leftKs],['Zbývá – NC',R.p.totals.leftNC,T.leftNC,R.o.totals.leftNC]];
+   ['Tržba s DPH',R.p.totals.rev,T.rev,R.o.totals.rev],['Tržba bez DPH',R.p.totals.revNoVat,T.revNoVat,R.o.totals.revNoVat],['Prodáno ks',R.p.totals.soldKs,T.soldKs,R.o.totals.soldKs],['Zbývá ks',R.p.totals.leftKs,T.leftKs,R.o.totals.leftKs],['Zbývá – NC',R.p.totals.leftNC,T.leftNC,R.o.totals.leftNC],['Cashflow bez DPH',R.p.totals.cash,T.cash,R.o.totals.cash],['Úhrada komise dodavatelům (NC)',R.p.totals.komPay,T.komPay,R.o.totals.komPay],['Zbývá komise ks (vratka)',R.p.byTyp.kom.left,R.b.byTyp.kom.left,R.o.byTyp.kom.left],['Zbývá vlastní ks',R.p.byTyp.own.left,R.b.byTyp.own.left,R.o.byTyp.own.left]];
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(sum),'Souhrn');
   var kr=[['Kampaň','Od','Do','Sleva %','Značky','Vyloučené značky','Téma','Skupina','Podskupina','Sezóna','Zasaženo ks','Prodá se ks','Tržba s DPH','NC prodaného bez DPH']];
   state.camps.slice().sort(function(a,c){return a.od<c.od?-1:1}).forEach(function(c){var bc=b.byCampaign[c.id]||{ks:0,rev:0,cost:0},mm=b.matched.filter(function(x){return x.id===c.id})[0]||{ks:0};
@@ -452,8 +460,8 @@ $('#btn-export').addEventListener('click',function(){
   var dr=[['Datum','Tržba s DPH – pesim.','Tržba s DPH – základ','Tržba s DPH – optim.','Kumulativně – základ','Prodáno ks – základ','Zbývá ks – základ']],cu=0;
   b.days.forEach(function(d,i){cu+=d.rev;dr.push([M.fmtDate(d.t),R.p.days[i].rev,d.rev,R.o.days[i].rev,cu,d.ks,d.remKs])});
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(dr),'Denně');
-  var zr=[['Kód zboží','Název','Značka','Sezóna','Skladem ks','Zbývá ks','Outlet (D1) s DPH','NC','Komise']];
-  state.items.forEach(function(it,i){zr.push([it.kod,it.nazev,it.znacka,it.sezona,it.ks,Math.round(b.rem[i]*10)/10,it.outlet,it.nc,it.komise?'ano':''])});
+  var zr=[['Kód zboží','Název','Značka','Sezóna','Skladem ks','Zbývá ks','Outlet (D1) s DPH','NC','Komise','Zbytek řešit']];
+  state.items.forEach(function(it,i){zr.push([it.kod,it.nazev,it.znacka,it.sezona,it.ks,Math.round(b.rem[i]*10)/10,it.outlet,it.nc,it.komise?'ano':'',it.komise?'vratka dodavateli':'vlastní'])});
   XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(zr),'Zbytek po konci');
   XLSX.writeFile(wb,'FAPO_cashflow_slev_'+M.fmtDate(Date.now())+'.xlsx');
 });
@@ -465,7 +473,7 @@ $('#f-proj').addEventListener('change',function(e){var f=e.target.files[0];if(!f
 var NAST=[['#n-elast','elasticity',1],['#n-spread','spread',1],['#n-base','baseDisc',.01],['#n-haz','baseHazardWeek',.01],['#n-fix','fixedMonthly',1],['#n-salv','salvagePct',1]];
 function fillSettings(){
   var S=state.S;NAST.forEach(function(x){$(x[0]).value=+(S[x[1]]/x[2]).toFixed(3)});
-  $('#n-bh').value=S.brandHazard;$('#n-cal').value=state.calOn?'1':'0';$('#n-pokl').value=state.pokl;
+  $('#n-bh').value=S.brandHazard;$('#n-kom').value=S.deductKomise===false?'0':'1';$('#n-cal').value=state.calOn?'1':'0';$('#n-pokl').value=state.pokl;
   $('#n-dow').innerHTML=['Po','Út','St','Čt','Pá','So','Ne'].map(function(d,i){return '<div><label>'+d+'</label><input type="number" step="0.05" data-i="'+i+'" value="'+S.dow[i]+'"></div>'}).join('');
   ['sw','ss'].forEach(function(p){var a=p==='sw'?S.seasWinter:S.seasSummer;for(var i=0;i<3;i++)$('#'+p+i).value=a[i]});
   drawEv();
@@ -478,7 +486,7 @@ function drawEv(){
 }
 function readSettings(){
   var S=state.S;NAST.forEach(function(x){var v=parseFloat($(x[0]).value);if(!isNaN(v))S[x[1]]=v*x[2]});
-  S.brandHazard=$('#n-bh').value;state.calOn=$('#n-cal').value==='1';state.pokl=$('#n-pokl').value.trim();
+  S.brandHazard=$('#n-bh').value;S.deductKomise=$('#n-kom').value==='1';state.calOn=$('#n-cal').value==='1';state.pokl=$('#n-pokl').value.trim();
   $$('#n-dow input').forEach(function(i){var v=parseFloat(i.value);if(!isNaN(v))S.dow[+i.dataset.i]=v});
   ['sw','ss'].forEach(function(p){var a=[];for(var i=0;i<3;i++)a.push(parseFloat($('#'+p+i).value)||0);if(p==='sw')S.seasWinter=a;else S.seasSummer=a});
   saveLS();
@@ -496,7 +504,7 @@ $('#btn-reset').addEventListener('click',function(){if(confirm('Obnovit výchoz�
 /* ---------- start ---------- */
 if(typeof XLSX==='undefined'){$('#load-msg').innerHTML='<b style="color:#c62828">Chybí soubor xlsx.full.min.js – nahrajte ho do repozitáře vedle index.html a obnovte stránku (Ctrl+F5).</b>'}
 loadLS();fillSettings();
-idbGet('data').then(function(d){if(d&&d.items){state.items=d.items;state.meta=d.meta;state.calib=d.calib;if(!state.start)state.start=today();afterData()}else renderCamps()}).catch(function(){renderCamps()});
+idbGet('data').then(function(d){if(d&&d.items){state.items=d.items;state.items.forEach(function(it){if(!it.typ)it.typ=it.komise?'Komise':'Vlastní'});state.meta=d.meta;state.calib=d.calib;if(!state.start)state.start=today();afterData()}else renderCamps()}).catch(function(){renderCamps()});
 function net(){$('#netchip').textContent=navigator.onLine?'online':'offline'}window.addEventListener('online',net);window.addEventListener('offline',net);net();
 if('serviceWorker' in navigator&&location.protocol!=='file:'){navigator.serviceWorker.register('sw.js').catch(function(){})}
 window.__app={state:state,run:run,render:render,tab:tab};
